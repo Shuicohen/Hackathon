@@ -1,6 +1,8 @@
 import psycopg2
 from dotenv import load_dotenv
 import os
+import json
+import csv
 
 # Load environment variables
 load_dotenv()
@@ -68,7 +70,24 @@ def view_transactions(filter_by=None, filter_value=None):
             cur.execute(query, params)
             return cur.fetchall()
 
-def export_data(format_type):
-    """Export data in the specified format (e.g., CSV, JSON)."""
-    # Implementation of data export functionality can be added based on format_type
-    return "Data exported successfully."
+# Export data in the specified format (e.g., CSV, JSON).
+def export_data(format):
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM transactions")
+    transactions = cursor.fetchall()
+    cursor.close()
+    connection.close()
+
+    if format == 'csv':
+        with open('transactions.csv', 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["ID", "Amount", "Category", "Description", "Date", "Currency"])
+            writer.writerows(transactions)
+        return "Data exported to transactions.csv successfully."
+    elif format == 'json':
+        with open('transactions.json', 'w') as file:
+            json.dump(transactions, file)
+        return "Data exported to transactions.json successfully."
+    else:
+        return "Invalid format. Please choose 'csv' or 'json'."

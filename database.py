@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 import os
 import json
 import csv
+from decimal import Decimal
+from datetime import date, datetime
 
 # Load environment variables
 load_dotenv()
@@ -14,10 +16,8 @@ DB_USER = os.getenv('DB_USER')
 DB_PASSWORD = os.getenv('DB_PASSWORD')
 DB_PORT = os.getenv('DB_PORT')
 
+# Establish a connection to the PostgreSQL database.
 def get_connection():
-    """
-    Establish a connection to the PostgreSQL database.
-    """
     try:
         connection = psycopg2.connect(
             database=DB_NAME,
@@ -31,8 +31,8 @@ def get_connection():
         print(f"Error connecting to the database: {e}")
         raise
 
+# Create the transactions table if it does not exist. 
 def create_table():
-    """Create the transactions table if it does not exist."""
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -47,8 +47,8 @@ def create_table():
             """)
             conn.commit()
 
+# Add a new transaction to the database.
 def add_transaction(amount, category, description, date, currency):
-    """Add a new transaction to the database."""
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -58,8 +58,8 @@ def add_transaction(amount, category, description, date, currency):
             conn.commit()
     return "Transaction added successfully."
 
+# Retrieve transactions based on filter criteria.
 def view_transactions(filter_by=None, filter_value=None):
-    """Retrieve transactions based on filter criteria."""
     query = "SELECT * FROM transactions"
     params = []
     if filter_by and filter_value:
@@ -70,24 +70,47 @@ def view_transactions(filter_by=None, filter_value=None):
             cur.execute(query, params)
             return cur.fetchall()
 
+# Serialize a transaction for JSON export.
+def serialize_transaction(transaction):
+    transaction_id, transaction_date, description, amount, currency, category = transaction
+    return {
+        'id': transaction_id,
+        'date': transaction_date.isoformat() if isinstance(transaction_date, date) else str(transaction_date),
+        'description': description,
+        'amount': float(amount) if isinstance(amount, Decimal) else amount,
+        'currency': currency,
+        'category': category
+    }
+
+
 # Export data in the specified format (e.g., CSV, JSON).
 def export_data(format):
-    connection = get_connection()
-    cursor = connection.cursor()
-    cursor.execute("SELECT * FROM transactions")
-    transactions = cursor.fetchall()
-    cursor.close()
-    connection.close()
+    connection = get_connection()  # Assuming you have a function to get a DB connection
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT * FROM transactions")
+        transactions = cursor.fetchall()
+        
+        if format == 'csv':
+            with open('transactions.csv', 'w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['ID', 'Date', 'Description', 'Amount', 'Currency', 'Category'])
+                for transaction in transactions:
+                    writer.writerow(transaction)
+            return "Data exported to transactions.csv"
 
-    if format == 'csv':
-        with open('transactions.csv', 'w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(["ID", "Amount", "Category", "Description", "Date", "Currency"])
-            writer.writerows(transactions)
-        return "Data exported to transactions.csv successfully."
-    elif format == 'json':
-        with open('transactions.json', 'w') as file:
-            json.dump(transactions, file)
-        return "Data exported to transactions.json successfully."
-    else:
-        return "Invalid format. Please choose 'csv' or 'json'."
+        elif format == 'json':
+            transactions_serializable = [serialize_transaction(t) for t in transactions]
+            with open('transactions.json', 'w') as file:
+                json.dump(transactions_serializable, file, indent=4)
+            return "Data exported to transactions.json"
+        
+        else:
+            return "Unsupported format. Please use 'csv' or 'json'."
+    
+    except Exception as e:
+        return f"Error exporting data: {e}"
+    
+    finally:
+        cursor.close()
+        connection.close()
